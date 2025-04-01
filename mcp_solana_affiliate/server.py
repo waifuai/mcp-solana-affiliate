@@ -1,7 +1,7 @@
 import asyncio
 import os
 from urllib.parse import quote
-from fastmcp import FastMCP, Context, Field
+from mcp.server.fastmcp import FastMCP, Context # Corrected import
 from mcp_solana_affiliate.affiliates import generate_affiliate_id, store_affiliate_data, record_commission
 from flask import Flask, request, jsonify
 import httpx
@@ -10,7 +10,8 @@ mcp = FastMCP(name="Solana Affiliate Server")
 
 app = Flask(__name__)
 
-@mcp.resource("affiliate://register")
+@mcp.tool("affiliate://register")
+ # Changed from resource to tool
 async def register_affiliate(context: Context) -> str:
     """Register a new affiliate and return a Solana Blink URL."""
     affiliate_id = generate_affiliate_id()
@@ -21,8 +22,9 @@ async def register_affiliate(context: Context) -> str:
     return f"Affiliate registered successfully! Your Solana Blink URL is: {blink_url}"
 
 @app.route('/affiliate_buy_tokens', methods=['POST', 'OPTIONS'])
-async def affiliate_buy_tokens():
-    """Handles token purchases through affiliate links."""
+def affiliate_buy_tokens():
+ # Changed to sync def
+    """Handles token purchases through affiliate links (synchronous)."""
     if request.method == 'OPTIONS':
         headers = {
             'Access-Control-Allow-Origin': '*',
@@ -43,8 +45,10 @@ async def affiliate_buy_tokens():
 
         # 1. Construct a request to the *main* server's Action API
         main_server_url = os.getenv("MAIN_SERVER_URL", "http://localhost:5000")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        with httpx.Client() as client:
+ # Changed to sync Client and with
+            response = client.post(
+ # Removed await
                 f"{main_server_url}/buy_tokens_action",
                 json={"amount": amount},  # No affiliate_id here
                 timeout=10.0
@@ -59,8 +63,8 @@ async def affiliate_buy_tokens():
 
             # 3.  Record the commission (affiliate_id, ico_id, amount, commission)
             ico_id = 'main_ico'  #  get this from the main server's response if you have multiple ICOs
-            required_sol = server.calculate_token_price(amount, server.ico_data[ico_id]) #need to calculate it
-            commission = required_sol * 0.1
+            # Simplified commission calculation: 1% of the token amount
+            commission = float(amount) * 0.01 # Corrected to 1%
             record_commission(affiliate_id, ico_id, amount, commission, request.remote_addr)
 
             # 4. Return the serialized transaction to the Blink client
