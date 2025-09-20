@@ -1,100 +1,188 @@
 import asyncio
 import os
+import logging
+import time
+from typing import Dict, Any, Optional, Union
 from urllib.parse import quote
-from mcp.server.fastmcp import FastMCP, Context # Corrected import
-from mcp_solana_affiliate.affiliates import generate_affiliate_id, store_affiliate_data, record_commission
-from flask import Flask, request, jsonify
+from mcp.server.fastmcp import FastMCP, Context
+from mcp_solana_affiliate.config import app_config
+from mcp_solana_affiliate.models import (
+    BuyTokensRequest, CommissionRequest, ErrorResponse,
+    HealthCheckResponse, MetricsResponse
+)
+from mcp_solana_affiliate.services import (
+    AffiliateService, TransactionService, HealthService, MetricsService
+)
+from mcp_solana_affiliate.cache import affiliate_cache, metrics_cache, health_cache
+from flask import Flask, request, jsonify, Response
 import httpx
+
+# Configure logging from config
+logging.basicConfig(
+    level=getattr(logging, app_config.logging.level),
+    format=app_config.logging.format,
+    filename=str(app_config.logging.file_path) if app_config.logging.file_path else None
+)
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP(name="Solana Affiliate Server")
 
 app = Flask(__name__)
 
+# Configure CORS headers from config
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers to all responses."""
+    response.headers['Access-Control-Allow-Origin'] = ', '.join(app_config.server.cors_origins)
+    response.headers['Access-Control-Allow-Methods'] = ', '.join(app_config.server.cors_methods)
+    response.headers['Access-Control-Allow-Headers'] = ', '.join(app_config.server.cors_headers)
+    return response
+
 @mcp.tool("affiliate://register")
- # Changed from resource to tool
 async def register_affiliate(context: Context) -> str:
     """Register a new affiliate and return a Solana Blink URL."""
-    affiliate_id = generate_affiliate_id()
-    main_server_url = os.getenv("MAIN_SERVER_URL", "http://localhost:5000")
-    # Point the Blink URL to the *affiliate* server's endpoint
-    action_api_url = f"{main_server_url}/affiliate_buy_tokens?affiliate_id={affiliate_id}"
-    blink_url = "solana-action:" + quote(action_api_url)
-    return f"Affiliate registered successfully! Your Solana Blink URL is: {blink_url}"
+    try:
+        return AffiliateService.register_affiliate()
+    except Exception as e:
+        logger.error(f"Error registering affiliate: {e}")
+        return f"Error registering affiliate: {str(e)}"
 
 @app.route('/affiliate_buy_tokens', methods=['POST', 'OPTIONS'])
-def affiliate_buy_tokens():
- # Changed to sync def
-    """Handles token purchases through affiliate links (synchronous)."""
+def affiliate_buy_tokens() -> Union[Response, tuple[str, int, Dict[str, str]]]:
+    """Handles token purchases through affiliate links."""
     if request.method == 'OPTIONS':
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '3600'
-        }
-        return '', 204, headers
-    
-    headers = {'Access-Control-Allow-Origin': '*'}
+        return '', 204
+
     try:
-        data = request.get_json()
-        amount = data.get('amount')
-        affiliate_id = data.get('affiliate_id')  # Get affiliate_id from the request
+        # Parse and validate request data using Pydantic models
+        request_data = BuyTokensRequest(**request.get_json())
+        client_ip = request.remote_addr or "unknown"
 
-        if not amount:
-            return jsonify({"error": "Missing amount"}), 400, headers
+        # Process the transaction through the service layer
+        transaction_response = TransactionService.process_buy_tokens(request_data, client_ip)
 
-        # 1. Construct a request to the *main* server's Action API
-        main_server_url = os.getenv("MAIN_SERVER_URL", "http://localhost:5000")
-        with httpx.Client() as client:
- # Changed to sync Client and with
-            response = client.post(
- # Removed await
-                f"{main_server_url}/buy_tokens_action",
-                json={"amount": amount},  # No affiliate_id here
-                timeout=10.0
-            )
-            response.raise_for_status()  # Raise HTTP errors
-            main_server_response = response.json()
+        return jsonify(transaction_response.dict()), 200
 
-            # 2. Get the serialized transaction from the main server's response
-            serialized_transaction = main_server_response.get("transaction")
-            if not serialized_transaction:
-                return jsonify({"error": "Failed to get transaction from main server"}), 500, headers
-
-            # 3.  Record the commission (affiliate_id, ico_id, amount, commission)
-            ico_id = 'main_ico'  #  get this from the main server's response if you have multiple ICOs
-            # Simplified commission calculation: 1% of the token amount
-            commission = float(amount) * 0.01 # Corrected to 1%
-            record_commission(affiliate_id, ico_id, amount, commission, request.remote_addr)
-
-            # 4. Return the serialized transaction to the Blink client
-            return jsonify({"transaction": serialized_transaction}), 200, headers
-
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        error_response = ErrorResponse(error=str(e))
+        return jsonify(error_response.dict()), 400
+    except httpx.TimeoutException:
+        logger.error("Timeout connecting to main server")
+        error_response = ErrorResponse(error="Service temporarily unavailable")
+        return jsonify(error_response.dict()), 503
+    except httpx.RequestError as e:
+        logger.error(f"Request error to main server: {e}")
+        error_response = ErrorResponse(error="Unable to connect to main server")
+        return jsonify(error_response.dict()), 502
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error from main server: {e.response.status_code}")
+        error_response = ErrorResponse(error="Main server error")
+        return jsonify(error_response.dict()), 502
     except Exception as e:
-        return jsonify({"error": str(e)}), 500, headers
+        logger.error(f"Unexpected error in affiliate_buy_tokens: {e}")
+        error_response = ErrorResponse(error="Internal server error")
+        return jsonify(error_response.dict()), 500
 
 @app.route('/record_commission', methods=['POST'])
-def record_commission_endpoint():
+def record_commission_endpoint() -> Response:
     """Record a commission for an affiliate."""
     try:
-        data = request.get_json()
-        affiliate_id = data.get('affiliate_id')
-        ico_id = data.get('ico_id')
-        amount = data.get('amount')
-        commission = data.get('commission')
-        client_ip = data.get('client_ip')
+        # Parse and validate request data using Pydantic models
+        commission_request = CommissionRequest(**request.get_json())
 
-        if not all([affiliate_id, ico_id, amount, commission, client_ip]):
-            return jsonify({"error": "Missing required data"}), 400
+        # Process through service layer
+        success = AffiliateService.record_commission(commission_request)
 
-        success = record_commission(affiliate_id, ico_id, amount, commission, client_ip)
         if success:
             return jsonify({"message": "Commission recorded successfully"}), 200
         else:
-            return jsonify({"error": "Invalid affiliate ID or other error"}), 400  # Or 500, depending on the error
+            error_response = ErrorResponse(error="Invalid affiliate ID or recording failed")
+            return jsonify(error_response.dict()), 400
+
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        error_response = ErrorResponse(error=str(e))
+        return jsonify(error_response.dict()), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Unexpected error in record_commission_endpoint: {e}")
+        error_response = ErrorResponse(error="Internal server error")
+        return jsonify(error_response.dict()), 500
+
+@app.route('/health', methods=['GET'])
+def health_check() -> Response:
+    """Health check endpoint for monitoring and load balancers."""
+    try:
+        health_data = HealthService.check_health()
+        status_code = 200 if health_data["status"] == "healthy" else 503
+        return jsonify(health_data), status_code
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        error_response = {
+            "status": "unhealthy",
+            "timestamp": int(time.time()),
+            "error": str(e)
+        }
+        return jsonify(error_response), 503
+
+@app.route('/metrics', methods=['GET'])
+def metrics() -> Response:
+    """Metrics endpoint for monitoring."""
+    try:
+        metrics_data = MetricsService.get_metrics()
+        return jsonify(metrics_data), 200
+    except Exception as e:
+        logger.error(f"Metrics collection failed: {e}")
+        error_response = ErrorResponse(error="Failed to collect metrics")
+        return jsonify(error_response.dict()), 500
+
+@app.route('/cache/stats', methods=['GET'])
+def cache_stats() -> Response:
+    """Cache statistics endpoint for monitoring."""
+    try:
+        stats = {
+            "affiliate_cache": affiliate_cache.stats(),
+            "metrics_cache": metrics_cache.stats(),
+            "health_cache": health_cache.stats()
+        }
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.error(f"Cache stats collection failed: {e}")
+        return jsonify({"error": "Failed to collect cache stats"}), 500
+
+@app.route('/cache/clear', methods=['POST'])
+def clear_cache() -> Response:
+    """Clear all caches."""
+    try:
+        affiliate_cache.clear()
+        metrics_cache.clear()
+        health_cache.clear()
+
+        logger.info("All caches cleared via API")
+        return jsonify({"message": "All caches cleared successfully"}), 200
+    except Exception as e:
+        logger.error(f"Cache clearing failed: {e}")
+        return jsonify({"error": "Failed to clear caches"}), 500
+
+@app.route('/cache/cleanup', methods=['POST'])
+def cleanup_cache() -> Response:
+    """Remove expired items from cache."""
+    try:
+        total_cleaned = (
+            affiliate_cache.cleanup() +
+            metrics_cache.cleanup() +
+            health_cache.cleanup()
+        )
+
+        logger.info(f"Cache cleanup completed, {total_cleaned} items removed")
+        return jsonify({
+            "message": f"Cache cleanup completed",
+            "items_removed": total_cleaned
+        }), 200
+    except Exception as e:
+        logger.error(f"Cache cleanup failed: {e}")
+        return jsonify({"error": "Failed to cleanup cache"}), 500
 
 if __name__ == "__main__":
-    asyncio.run(mcp.run(transport="http", port=5001))
-    app.run(debug=True, port=5002)
+    asyncio.run(mcp.run(transport="http", port=app_config.server.mcp_port))
+    app.run(debug=app_config.server.debug, port=app_config.server.flask_port)
