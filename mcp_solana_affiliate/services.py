@@ -1,3 +1,20 @@
+"""
+Service Layer Module.
+
+This module contains the core business logic for the Solana affiliate system, organized
+into service classes that handle different aspects of the application. Services interact
+with the data layer, external APIs, and provide high-level operations for the API endpoints
+and MCP tools.
+
+Key Features:
+- Separation of business logic from API endpoints
+- Service classes for affiliates, transactions, health checks, and metrics
+- Integration with external main server for transaction processing
+- Caching integration for performance optimization
+- Comprehensive error handling and logging
+- Commission calculation and recording logic
+- Health monitoring and metrics collection
+"""
 """Service layer for business logic."""
 
 import logging

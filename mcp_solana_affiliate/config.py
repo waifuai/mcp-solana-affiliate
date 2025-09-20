@@ -1,3 +1,18 @@
+"""
+Configuration Management Module.
+
+This module handles all configuration for the Solana affiliate server using Pydantic models
+for validation and type safety. It loads configuration from environment variables with
+sensible defaults, providing a centralized way to manage server settings, affiliate
+parameters, external service connections, and logging configuration.
+
+Key Features:
+- Pydantic models for type-safe configuration validation
+- Environment variable loading with fallback defaults
+- Structured configuration sections for different components
+- Comprehensive validation with custom validators
+- Centralized configuration instance for easy access
+"""
 """Configuration management using Pydantic models."""
 
 import os

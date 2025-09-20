@@ -1,3 +1,20 @@
+"""
+Affiliate Data Management Module.
+
+This module handles all affiliate-related data operations including persistence, retrieval,
+and manipulation. It provides functions for managing affiliate records, generating unique
+IDs, recording commissions, and handling JSON-based data storage with fallback mechanisms.
+
+Key Features:
+- JSON file-based data persistence for affiliate records
+- Automatic data directory creation and file management
+- Commission recording with validation and logging
+- Affiliate data retrieval and storage operations
+- Unique ID generation using UUID
+- Error handling for file operations and data corruption
+- Type definitions for better code organization
+- Fallback configuration loading for robustness
+"""
 import json
 import uuid
 from pathlib import Path

@@ -1,3 +1,21 @@
+"""
+Server Module Tests.
+
+This module contains comprehensive tests for the Solana affiliate server's main functionality,
+including MCP (Model Context Protocol) tools, REST API endpoints, error handling, and
+integration tests. Tests cover both synchronous and asynchronous operations with proper
+mocking and fixtures for reliable test isolation.
+
+Key Features:
+- MCP tool testing for affiliate registration
+- REST API endpoint testing with Flask test client
+- CORS headers and preflight request validation
+- Error handling and HTTP status code testing
+- Service layer integration testing
+- Input validation testing for models
+- End-to-end affiliate flow testing
+- Comprehensive mocking for external dependencies
+"""
 # tests/test_server.py
 import pytest
 import json

@@ -1,3 +1,18 @@
+"""
+Test Configuration Module.
+
+This module contains pytest fixtures and configuration for testing the Solana affiliate
+server. It provides test utilities, mock objects, and setup/teardown functionality to
+ensure tests run in isolation with proper mocking and cleanup.
+
+Key Features:
+- Test data file management with automatic cleanup
+- Flask application and test client fixtures
+- MCP (Model Context Protocol) context and server mocking
+- Environment variable management for tests
+- Module-level patching for reliable test isolation
+- Automatic test data file creation and cleanup
+"""
 # tests/conftest.py
 import pytest
 import json

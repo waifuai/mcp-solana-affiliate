@@ -1,3 +1,20 @@
+"""
+Caching System Module.
+
+This module provides a simple yet effective in-memory caching system with TTL (Time To Live)
+support for performance optimization. It includes thread-safe operations, automatic expiration
+handling, and cache statistics for monitoring.
+
+Key Features:
+- Thread-safe cache operations with locking mechanism
+- Configurable TTL (Time To Live) for cache entries
+- Automatic cleanup of expired entries
+- Cache statistics and monitoring capabilities
+- Separate cache instances for different data types
+- Helper functions for generating consistent cache keys
+- Comprehensive logging for cache operations
+- Memory-efficient storage with automatic expiration
+"""
 """Simple in-memory caching for performance optimization."""
 
 import time

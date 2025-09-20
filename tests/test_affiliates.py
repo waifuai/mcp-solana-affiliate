@@ -1,3 +1,19 @@
+"""
+Affiliate Module Tests.
+
+This module contains unit tests for the affiliate data management functionality,
+including data loading, saving, affiliate ID generation, commission recording,
+and data retrieval operations. Tests ensure proper file handling, data persistence,
+and error handling scenarios.
+
+Key Features:
+- Test data file management with automatic cleanup
+- Comprehensive testing of affiliate data operations
+- UUID validation for generated affiliate IDs
+- Commission recording validation and timestamp checking
+- Error handling for invalid affiliate IDs and edge cases
+- File system operations testing with proper isolation
+"""
 # tests/test_affiliates.py
 import pytest
 import json

@@ -1,3 +1,18 @@
+"""
+Data Models Module.
+
+This module defines all the data models used throughout the Solana affiliate system using
+Pydantic for validation and serialization. These models ensure type safety, data validation,
+and consistent API responses across the application.
+
+Key Features:
+- Pydantic models for request/response validation
+- Custom validators for business logic constraints
+- Type hints for better IDE support and documentation
+- Structured data models for affiliates, commissions, and transactions
+- Error response models for consistent API error handling
+- Health check and metrics response models for monitoring
+"""
 """Data models for the affiliate system using Pydantic."""
 
 from datetime import datetime

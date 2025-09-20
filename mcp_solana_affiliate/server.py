@@ -1,3 +1,20 @@
+"""
+Solana Affiliate Server - Main server module.
+
+This module serves as the main entry point for the Solana affiliate system, providing both
+Model Context Protocol (MCP) tools and REST API endpoints. The server handles affiliate
+registration, token purchases through affiliate links, commission recording, health checks,
+and metrics collection.
+
+Key Features:
+- MCP tool for affiliate registration with Solana Blink URL generation
+- REST API endpoints for token purchases, commission recording, and monitoring
+- Integration with external main server for transaction processing
+- Comprehensive error handling and logging
+- CORS support for web application integration
+- Health checks and metrics for monitoring
+- In-memory caching for performance optimization
+"""
 import asyncio
 import os
 import logging
